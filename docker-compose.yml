@@ -1,0 +1,147 @@
+version: '3.8'
+
+services:
+  # PostgreSQL with PostGIS for geospatial data
+  postgres:
+    image: postgis/postgis:16-3.4
+    container_name: microservices-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_MULTIPLE_DATABASES: auth_match,chat_core,social_feed,events,geo,gamification
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-multiple-dbs.sh:/docker-entrypoint-initdb.d/init-multiple-dbs.sh
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Redis for caching and pub/sub
+  redis:
+    image: redis:7-alpine
+    container_name: microservices-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Service 1: Auth-Match
+  auth-match:
+    build:
+      context: .
+      dockerfile: services/auth_match/Dockerfile
+    container_name: auth-match-service
+    environment:
+      AUTH_MATCH_DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/auth_match
+      AUTH_MATCH_JWT_SECRET_KEY: ${JWT_SECRET_KEY:-your-secret-key-change-in-production}
+      REDIS_URL: redis://redis:6379
+    ports:
+      - "8001:8001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # Service 2: Chat-Core
+  chat-core:
+    build:
+      context: .
+      dockerfile: services/chat_core/Dockerfile
+    container_name: chat-core-service
+    environment:
+      CHAT_CORE_DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/chat_core
+      CHAT_CORE_JWT_SECRET_KEY: ${JWT_SECRET_KEY:-your-secret-key-change-in-production}
+      REDIS_URL: redis://redis:6379
+    ports:
+      - "8002:8002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # Service 3: Social-Feed
+  social-feed:
+    build:
+      context: .
+      dockerfile: services/social_feed/Dockerfile
+    container_name: social-feed-service
+    environment:
+      SOCIAL_FEED_DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/social_feed
+      SOCIAL_FEED_JWT_SECRET_KEY: ${JWT_SECRET_KEY:-your-secret-key-change-in-production}
+      REDIS_URL: redis://redis:6379
+    ports:
+      - "8003:8003"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # Service 4: Events
+  events:
+    build:
+      context: .
+      dockerfile: services/events/Dockerfile
+    container_name: events-service
+    environment:
+      EVENTS_DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/events
+      EVENTS_JWT_SECRET_KEY: ${JWT_SECRET_KEY:-your-secret-key-change-in-production}
+      REDIS_URL: redis://redis:6379
+    ports:
+      - "8004:8004"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # Service 5: Geo
+  geo:
+    build:
+      context: .
+      dockerfile: services/geo/Dockerfile
+    container_name: geo-service
+    environment:
+      GEO_DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/geo
+      GEO_JWT_SECRET_KEY: ${JWT_SECRET_KEY:-your-secret-key-change-in-production}
+      REDIS_URL: redis://redis:6379
+    ports:
+      - "8005:8005"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # Service 6: Gamification & Billing
+  gamification-billing:
+    build:
+      context: .
+      dockerfile: services/gamification_billing/Dockerfile
+    container_name: gamification-billing-service
+    environment:
+      GAMIFICATION_DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/gamification
+      GAMIFICATION_JWT_SECRET_KEY: ${JWT_SECRET_KEY:-your-secret-key-change-in-production}
+      REDIS_URL: redis://redis:6379
+    ports:
+      - "8006:8006"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  redis_data:
